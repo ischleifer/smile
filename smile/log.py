@@ -8,6 +8,214 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 
+import sqlite3
+
+class LogExperiment(object):
+    experiment_pk = property()
+    experiment_name = property()
+    group_domain = property()
+
+class LogSubject(object):
+    subject_pk = property()
+    experiment = property()
+    subject_id = property()
+    
+    def __getattr__(self, name):
+        raise NotImplementedError
+
+    def __setattr__(self, name, value):
+        raise NotImplementedError
+
+class LogSession(object):
+    session_pk = property()
+    experiment = property()
+    paradigm_name = property()
+    paradigm_version = property()
+    subject = property()
+    session_title = property()
+    start_time = property()
+    stop_time = property()
+    host_name = property()
+    user_name = property()
+    experimenter = property()
+
+#TODO: auxiliary files
+
+class LogDB(object):
+    def get_experiment(self, experiment_name):
+        raise NotImplementedError
+    
+    def get_subject(self, subject_id):
+        raise NotImplementedError
+
+    def new_session(self, **attributes):
+        raise NotImplementedError
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+    def run_modification(self, query, params, blocking=False):
+        raise NotImplementedError
+
+    def iter_select(self, query, params, order_by=None):
+        raise NotImplementedError
+
+    def scalar_select(self, query, params):
+        raise NotImplementedError
+
+    def add_event_table(self, table_name, type_dict):
+        column_names = type_dict.keys()
+        type_map = {
+            bool : "BOOLEAN",
+            int : "INTEGER",
+            float : "REAL",
+            str : "TEXT"}
+        column_defs = ["%s %s" % (name, type_map[type_]) for
+                       name, type_ in type_dict.items()]
+        query = "CREATE TABLE IF NOT EXISTS %s (%s);" % (
+            table_name,
+            ",".join(column_defs))
+        #TODO: params!
+        self.run_modification(self, query, params, blocking)
+
+    def add_event(self, table_name, session, event_title, timestamp, value_dict,
+                  blocking=False):
+        #TODO: table creation???
+        values = {
+            "SESSION_PK" : session.session_pk,
+            "TITLE" : session.session_title,
+            "TIMESTAMP" : timestamp,  #???
+            }
+        values.update(value_dict)
+        query = "INSERT INTO %s (%s) VALUES (%s);" % (
+            table_name,
+            ",".join(values.keys()),
+            ",".join("?" * len(values)))
+        params = values.values()
+        self.run_modification(self, query, params, blocking)
+
+    def get_filters(self, experiment=None, subject=None, session_title=None):
+        filters = []
+        params = []
+        if experiment is not None:
+            filters.append("EXPERIMENT.PK=%d" % experiment.experiment_pk)
+        if subject is not None:
+            filters.append("SUBJECT.PK=%d" % subject.subject_pk)
+        if session_title is not None:
+            filters.append("SESSION.TITLE=?")
+            params.append(session_title)
+        #TODO: subject demographics?
+        return filters, params
+
+    #TODO: look things up by name
+
+    def get_session_selection(self, experiment=None, subject=None,
+                              session_title=None):
+        filters, params = self.get_filters(experiment, subject, session_title)
+        filters = ["SESSION.SUBJECT_PK=SUBJECT.PK",
+                   "SESSION.EXPERIMENT_PK=EXPERIMENT.PK"] + filters
+        tables = "SESSION, SUBJECT, EXPERIMENT"
+        where = " AND ".join(filters)
+        return ("FROM %s WHERE %s " +
+                "ORDER BY SESSION.START_TIME;") % (tables, where), params
+
+    def get_subject_selection(self, experiment=None, session_title=None):
+        filters, params = self.get_filters(experiment, None, session_title)
+        filters = ["SUBJECT.PK=SESSION.SUBJECT_PK",
+                   "SESSION.EXPERIMENT_PK=EXPERIMENT.PK"] + filters
+        tables = "SUBJECT, SESSION, EXPERIMENT"
+        where = " AND ".join(filters)
+        return "FROM %s WHERE %s ORDER BY SUBJECT.ID;" % (tables, where), params
+
+    def get_experiment_selection(self, subject=None):
+        filters, params = self.get_filters(None, subject, None)
+        filters = ["SUBJECT.PK=SESSION.SUBJECT_PK"
+                   "EXPERIMENT.PK=SESSION.EXPERIMENT_PK"] + filters
+        tables = "SESSION, SUBJECT, EXPERIMENT"
+        where = " AND ".join(filters)
+        return ("FROM %s WHERE %s " +
+                "GROUP BY SUBJECT.PK " +
+                "ORDER BY EXPERIMENT.NAME;") % (tables, where), params
+
+    def iter_sessions(self, experiment=None, subject=None, session_title=None):
+        selection, params = self.get_session_selection(experiment, subject,
+                                                       session_title)
+        query = "SELECT SESSION.PK %s;" % selection
+        for record in self.iter_select(query, params):
+            yield LogSession(self, record[0])
+
+    def count_sessions(self, experiment=None, subject=None, session_title=None):
+        selection, params = self.get_session_selection(experiment, subject,
+                                                       session_title)
+        query = "SELECT COUNT(*) %s;" % selection
+        return self.scalar_select(query, params)
+
+    def iter_subjects(self, experiment=None, session_title=None):
+        selection, params = self.get_subject_selection(experiment,
+                                                       session_title)
+        query = "SELECT SUBJECT.PK %s;" % selection
+        for record in self.iter_select(query, params):
+            yield LogSubject(self, record[0])
+
+    def count_subjects(self, experiment=None, session_title=None):
+        selection, params = self.get_subject_selection(experiment,
+                                                       session_title)
+        query = "SELECT COUNT(*) %s;" % selection
+        return self.scalar_select(query, params)
+
+    def iter_experiments(self, subject=None):
+        selection, params = self.get_experiment_selection(subject)
+        query = "SELECT EXPERIMENT.PK %s;" % selection
+        for record in self.iter_select(query, params):
+            yield LogExperiment(self, record[0])
+
+    def count_experiments(self, subject=None):
+        selection, params = self.get_experiment_selection(subject)
+        query = "SELECT COUNT(*) %s;" % selection
+        return self.scalar_select(query, params)
+
+    def iter_event_titles(self):
+        raise NotImplementedError
+
+    def count_event_titles(self):
+        raise NotImplementedError
+
+    def iter_events(self, event_title=None, session=None, session_title=None,
+                    subject=None, experiment=None):
+        raise NotImplementedError
+
+    def count_events(self, event_title=None, session=None, session_title=None,
+                     subject=None, experiment=None):
+        raise NotImplementedError
+
+    def vacuum(self):
+        raise NotImplementedError
+
+    def close(self):
+        raise NotImplementedError
+
+    def summarize(self, dest_file, experiment=None, subject=None, session=None,
+                  session_title=None, event_title=None):
+        pass #...
+
+    def event_csv(self, dest_file, event_title, experiment=None, subject=None,
+                  session=None, session_title=None, numeric_only=False):
+        pass #...
+
+    #TODO: data by subject demographics?
+
+    #TODO: copying between DBs, deletion
+    #...
+
+
+
+
+
+
+
+
+
 import yaml
 import csv
 #import sys
