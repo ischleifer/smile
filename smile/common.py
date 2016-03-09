@@ -56,6 +56,7 @@ from video import (
     TextInput,
     ToggleButton,
     ProgressBar,
+    CodeInput,
     Video,
     AnchorLayout,
     BoxLayout,
@@ -67,8 +68,9 @@ from video import (
     StackLayout,
     BackgroundColor,
     UpdateWidget,
-    BlockingFlips)
-from dotbox import DotBox
+    BlockingFlips,
+    NonBlockingFlips)
+from dotbox import DotBox, DynamicDotBox
 from ref import Ref, val, jitter, shuffle
 #from smile.audio import Beep, SoundFile, RecordSoundFile
 from freekey import FreeKey

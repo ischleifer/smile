@@ -364,6 +364,31 @@ class BlockingFlips(VisualState):
         self._exp._app.force_blocking_flip = len(BlockingFlips.layers) > 0
 
 
+class NonBlockingFlips(VisualState):
+    """Force non-blocking flips when updating the screen.
+    """
+    layers = []
+
+    def __init__(self, duration=None, parent=None, save_log=True,
+                 name=None, blocking=True):
+        super(NonBlockingFlips, self).__init__(parent=parent,
+                                               duration=duration,
+                                               save_log=save_log,
+                                               name=name,
+                                               blocking=blocking)
+
+    def show(self):
+        NonBlockingFlips.layers.append(self)
+        self._exp._app.force_nonblocking_flip = len(NonBlockingFlips.layers) > 0
+
+    def unshow(self):
+        if NonBlockingFlips.layers[-1] is self:
+            NonBlockingFlips.layers.pop()
+        else:
+            NonBlockingFlips.layers.remove(self)
+        self._exp._app.force_nonblocking_flip = len(NonBlockingFlips.layers) > 0
+
+
 class WidgetState(VisualState):
     """A *WidgetState* is used to wrap Kivy widgets into SMILE classes
 
@@ -1102,6 +1127,7 @@ widgets = [
     "TextInput",
     "ToggleButton",
     "ProgressBar",
+    "CodeInput",
 
     #...
     "AnchorLayout",
@@ -1169,8 +1195,8 @@ class Video(WidgetState.wrap(kivy.uix.video.Video)):
         if self._end_time is None:
             # we need the duration to set the end time
             if self._widget._video.duration == -1:
-                # try for half a ms
-                for i in range(5):
+                # try for up to 1 ms
+                for i in range(10):
                     if self._widget._video.duration == -1:
                         break
                     print 'd',
@@ -1191,12 +1217,13 @@ class Video(WidgetState.wrap(kivy.uix.video.Video)):
         self._widget._video._update(0)  # prevent white flash at start
         if self._widget.width == 0 and self._widget.height == 0:
             if not self._widget._video.texture:
-                # gotta wait for the texture to load (up to .5ms)
-                for i in range(5):
+                # gotta wait for the texture to load (up to 1ms)
+                for i in range(10):
                     if self._widget._video.texture:
                         break
                     print 't',
                     clock.usleep(100)
+                    self._widget._video._update(0)
             self.live_change(size=self._widget._video.texture.size)
         super(Video, self).show()
 
